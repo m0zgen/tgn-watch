@@ -1,0 +1,58 @@
+relay:
+  endpoint: "http://127.0.0.1:8080/api/v1/send"
+  key: "change-me-super-secret"
+  default_group: "monitoring"
+  timeout: "3s"
+
+watcher:
+  interval: "30s"
+  notify_on_recovery: true
+  dedup_window: "10m"
+  hostname: ""
+
+checks:
+  - name: "tgn-relay local health"
+    type: "http"
+    url: "http://127.0.0.1:8080/healthz"
+    expect_status: 200
+    timeout: "3s"
+    group: "monitoring"
+    severity: "critical"
+
+  - name: "Local SSH TCP"
+    type: "tcp"
+    target: "127.0.0.1:22"
+    timeout: "2s"
+    group: "monitoring"
+    severity: "warning"
+
+  - name: "tgn-relay systemd"
+    type: "systemd"
+    service: "tgn-relay.service"
+    timeout: "3s"
+    group: "monitoring"
+    severity: "critical"
+
+  - name: "Root disk"
+    type: "disk"
+    path: "/"
+    max_used_percent: 90
+    timeout: "3s"
+    group: "monitoring"
+    severity: "warning"
+
+  - name: "Memory usage"
+    type: "memory"
+    max_used_percent: 90
+    timeout: "3s"
+    group: "monitoring"
+    severity: "warning"
+
+  - name: "OpenBLD TLS certificate"
+    type: "tls_cert"
+    target: "openbld.net:443"
+    warn_days: 14
+    critical_days: 3
+    timeout: "5s"
+    group: "monitoring"
+    severity: "warning"
