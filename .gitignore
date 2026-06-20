@@ -1,0 +1,7 @@
+bin/
+dist/
+prod/
+config.yml
+config-local.yml
+*.log
+.DS_Store
