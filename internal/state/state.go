@@ -34,7 +34,6 @@ func (s *Store) Update(name string, res checks.Result, dedup time.Duration, noti
 	defer s.mu.Unlock()
 
 	now := time.Now()
-
 	entry, exists := s.items[name]
 	if !exists {
 		s.items[name] = Entry{LastStatus: res.Status, LastChange: now}

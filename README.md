@@ -1,58 +1,58 @@
 # tgn-watch
 
-`tgn-watch` is a lightweight YAML-based monitoring agent for Linux/server infrastructure.
-It checks HTTP endpoints, TCP ports, systemd services, disk usage, memory usage, and TLS certificate expiration, then sends alerts and recovery notifications through `tgn-relay`.
+`tgn-watch` is a lightweight monitoring agent for Linux/server infrastructure. It runs local checks and sends Telegram alerts through `tgn-relay`.
 
-It is designed as a small alternative/complement to Monit or Uptime Kuma for simple production nodes and DNS PoPs.
-
-Working pipeline: `tgn-watch` -> `tgn-relay` -> Telegram.
+Current release: **v0.1.1**
 
 ## Features
 
 - HTTP checks
 - TCP checks
+- DNS checks
 - systemd service checks
+- process checks
 - disk usage checks
-- Linux memory checks via `/proc/meminfo`
-- TLS certificate expiration checks
-- alert on failure
-- recovery notification
-- dedup window to avoid Telegram spam
-- per-check severity and group
-- safe logs without secrets
+- memory usage checks
+- TLS certificate expiry checks
+- file age checks
+- command checks with explicit enable flag
+- per-check interval
+- alert/recovery notifications
+- deduplication window
+- YAML-style config without external Go dependencies
 - systemd unit example
 
-## Quick start
+## Architecture
 
-Start `tgn-relay` first, then run:
+```text
+tgn-watch  ->  tgn-relay  ->  Telegram
+```
+
+`tgn-watch` does not talk to Telegram directly. It sends messages to `tgn-relay` using `/api/v1/send`.
+
+## Build
 
 ```bash
 go mod tidy
+make build
+./bin/tgn-watch -version
+```
+
+Release builds use `-trimpath`, so local build-machine paths are not embedded in stack traces.
+
+## Run
+
+```bash
 go run ./cmd/tgn-watch -config configs/config.example.yml
 ```
 
-Build binary:
+or:
 
 ```bash
-make build
 ./bin/tgn-watch -config configs/config.example.yml
 ```
 
-## Test notification flow
-
-Example check config points to local `tgn-relay`:
-
-```yaml
-relay:
-  endpoint: "http://127.0.0.1:8080/api/v1/send"
-  key: "change-me-super-secret"
-  default_group: "monitoring"
-  timeout: "3s"
-```
-
-The group must exist in `tgn-relay` config.
-
-## Config example
+## Config
 
 ```yaml
 relay:
@@ -66,73 +66,121 @@ watcher:
   notify_on_recovery: true
   dedup_window: "10m"
   hostname: ""
-
-checks:
-  - name: "tgn-relay local health"
-    type: "http"
-    url: "http://127.0.0.1:8080/healthz"
-    expect_status: 200
-    timeout: "3s"
-    group: "monitoring"
-    severity: "critical"
+  command_checks_enabled: false
 ```
 
-## Check types
+Each check may override the global interval:
+
+```yaml
+checks:
+  - name: "OpenBLD TLS certificate"
+    type: "tls_cert"
+    target: "openbld.net:443"
+    warn_days: 14
+    critical_days: 3
+    interval: "6h"
+    timeout: "5s"
+    group: "monitoring"
+    severity: "warning"
+```
+
+## Check examples
 
 ### HTTP
 
 ```yaml
-- name: "Website"
+- name: "tgn-relay local health"
   type: "http"
-  url: "https://openbld.net/"
+  url: "http://127.0.0.1:8080/healthz"
   expect_status: 200
-  timeout: "5s"
-```
-
-Optional fields:
-
-```yaml
-expect_status_min: 200
-expect_status_max: 399
-expect_contains: "OpenBLD"
+  timeout: "3s"
+  group: "monitoring"
+  severity: "critical"
 ```
 
 ### TCP
 
 ```yaml
-- name: "DNS TCP"
+- name: "Local SSH TCP"
   type: "tcp"
-  target: "127.0.0.1:53"
+  target: "127.0.0.1:22"
   timeout: "2s"
+  group: "monitoring"
+  severity: "warning"
+```
+
+### DNS
+
+DNS checks use a small native UDP DNS query implementation, without third-party DNS libraries.
+
+```yaml
+- name: "DNS resolver check"
+  type: "dns"
+  server: "127.0.0.1:53"
+  qname: "openbld.net."
+  qtype: "A"
+  expect_rcode: "NOERROR"
+  timeout: "2s"
+  group: "monitoring"
+  severity: "critical"
+```
+
+Supported qtypes: `A`, `AAAA`, `NS`, `CNAME`, `SOA`, `PTR`, `MX`, `TXT`, `SRV`.
+
+Optional answer threshold:
+
+```yaml
+expect_min_answers: 1
 ```
 
 ### systemd
 
 ```yaml
-- name: "zBLD service"
+- name: "tgn-relay systemd"
   type: "systemd"
-  service: "zbld.service"
+  service: "tgn-relay.service"
   timeout: "3s"
+  group: "monitoring"
+  severity: "critical"
 ```
 
-### Disk
+### process
+
+```yaml
+- name: "tgn-relay process"
+  type: "process"
+  process: "tgn-relay"
+  timeout: "3s"
+  group: "monitoring"
+  severity: "critical"
+```
+
+The process check scans `/proc`, so it is currently Linux-focused.
+
+### disk
 
 ```yaml
 - name: "Root disk"
   type: "disk"
   path: "/"
   max_used_percent: 90
+  timeout: "3s"
+  group: "monitoring"
+  severity: "warning"
 ```
 
-### Memory
+### memory
 
 ```yaml
 - name: "Memory usage"
   type: "memory"
   max_used_percent: 90
+  timeout: "3s"
+  group: "monitoring"
+  severity: "warning"
 ```
 
-### TLS certificate
+### TLS certificate expiry
 
 ```yaml
 - name: "OpenBLD TLS certificate"
@@ -140,26 +188,63 @@ expect_contains: "OpenBLD"
   target: "openbld.net:443"
   warn_days: 14
   critical_days: 3
+  interval: "6h"
   timeout: "5s"
+  group: "monitoring"
+  severity: "warning"
 ```
 
-## State logic
+### file age
 
-`tgn-watch` avoids notification spam:
+```yaml
+- name: "Blocklist freshness"
+  type: "file_age"
+  path: "/var/lib/zbld/hosts.txt"
+  max_age: "6h"
+  interval: "10m"
+  timeout: "3s"
+  group: "monitoring"
+  severity: "warning"
+```
+
+### command
+
+Command checks are disabled by default. Enable them explicitly:
+
+```yaml
+watcher:
+  command_checks_enabled: true
+```
+
+Then define a command check:
+
+```yaml
+- name: "Custom systemctl check"
+  type: "command"
+  command: "systemctl is-active tgn-relay.service"
+  expect_exit_code: 0
+  interval: "1m"
+  timeout: "3s"
+  group: "monitoring"
+  severity: "critical"
+```
+
+Command checks execute through `/bin/sh -c`, so treat them as trusted local configuration only.
+
+## Notification logic
 
 ```text
-UNKNOWN -> OK       no notification
 UNKNOWN -> FAIL     alert
 OK      -> FAIL     alert
-FAIL    -> FAIL     silent until dedup_window expires
+FAIL    -> FAIL     repeat only after dedup_window
 FAIL    -> OK       recovery, if notify_on_recovery is true
-OK      -> OK       silent
+OK      -> OK       no notification
 ```
 
-## Install as systemd service
+## Install with systemd
 
 ```bash
-sudo useradd --system --home /var/lib/tgn-watch --shell /usr/sbin/nologin tgn-watch
+sudo useradd --system --home /var/lib/tgn-watch --shell /usr/sbin/nologin tgn-watch || true
 sudo mkdir -p /etc/tgn-watch /var/lib/tgn-watch
 sudo cp bin/tgn-watch /usr/local/bin/tgn-watch
 sudo cp configs/config.example.yml /etc/tgn-watch/config.yml
@@ -174,18 +259,20 @@ Logs:
 journalctl -u tgn-watch -f
 ```
 
-## Roadmap
+## Changelog
 
-- DNS checks
-- process checks
-- command checks
-- file age checks
-- Prometheus metrics
-- SIGHUP config reload
-- structured `/api/v1/event` support after `tgn-relay v0.2.0`
+### v0.1.1
 
-## Credits
+- fix: protect state map with mutex
+- build: add `-trimpath`
+- feat: DNS check
+- feat: process check
+- feat: file age check
+- feat: command check with explicit enable flag
+- feat: per-check interval
 
-- [tgn-relay](https://github.com/m0zgen/tgn-relay) lightweight service watcher + HTTP/TCP/DNS/systemd checks + tgn-relay notifications
-- Go standard library and open-source ecosystem for making this possible
-- [OpenBLD.net](https://openbld.net) team for inspiration and testing
+### v0.1.0
+
+- initial MVP
+- HTTP/TCP/systemd/disk/memory/TLS certificate checks
+- alert/recovery notifications through tgn-relay

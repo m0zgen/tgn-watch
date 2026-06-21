@@ -180,6 +180,12 @@ func setWatcherField(w *WatcherConfig, key, val string) error {
 		w.DedupWindow = d
 	case "hostname":
 		w.Hostname = val
+	case "command_checks_enabled":
+		b, err := parseBoolValue(val)
+		if err != nil {
+			return err
+		}
+		w.CommandChecksEnabled = b
 	default:
 		return fmt.Errorf("unknown watcher field %q", key)
 	}
@@ -255,6 +261,36 @@ func setCheckField(c *CheckConfig, key, val string) error {
 			return err
 		}
 		c.CriticalDays = i
+	case "server":
+		c.Server = val
+	case "qname":
+		c.QName = val
+	case "qtype":
+		c.QType = val
+	case "expect_rcode":
+		c.ExpectRCode = val
+	case "expect_min_answers":
+		i, err := parseIntValue(val)
+		if err != nil {
+			return err
+		}
+		c.ExpectMinAnswers = i
+	case "process":
+		c.Process = val
+	case "max_age":
+		d, err := parseDurationValue(val)
+		if err != nil {
+			return err
+		}
+		c.MaxAge = d
+	case "command":
+		c.Command = val
+	case "expect_exit_code":
+		i, err := parseIntValue(val)
+		if err != nil {
+			return err
+		}
+		c.ExpectExitCode = i
 	default:
 		return fmt.Errorf("unknown check field %q", key)
 	}

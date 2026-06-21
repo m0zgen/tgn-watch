@@ -9,6 +9,8 @@ watcher:
   notify_on_recovery: true
   dedup_window: "10m"
   hostname: ""
+  # Command checks execute via /bin/sh -c and are disabled by default for safety.
+  command_checks_enabled: false
 
 checks:
   - name: "tgn-relay local health"
@@ -26,9 +28,26 @@ checks:
     group: "monitoring"
     severity: "warning"
 
+  - name: "DNS resolver check"
+    type: "dns"
+    server: "127.0.0.1:53"
+    qname: "openbld.net."
+    qtype: "A"
+    expect_rcode: "NOERROR"
+    timeout: "2s"
+    group: "monitoring"
+    severity: "critical"
+
   - name: "tgn-relay systemd"
     type: "systemd"
     service: "tgn-relay.service"
+    timeout: "3s"
+    group: "monitoring"
+    severity: "critical"
+
+  - name: "tgn-relay process"
+    type: "process"
+    process: "tgn-relay"
     timeout: "3s"
     group: "monitoring"
     severity: "critical"
@@ -53,6 +72,26 @@ checks:
     target: "openbld.net:443"
     warn_days: 14
     critical_days: 3
+    interval: "6h"
     timeout: "5s"
     group: "monitoring"
     severity: "warning"
+
+  - name: "Blocklist freshness example"
+    type: "file_age"
+    path: "/var/lib/zbld/hosts.txt"
+    max_age: "6h"
+    interval: "10m"
+    timeout: "3s"
+    group: "monitoring"
+    severity: "warning"
+
+  # Enable watcher.command_checks_enabled before using command checks.
+  # - name: "Custom command example"
+  #   type: "command"
+  #   command: "systemctl is-active tgn-relay.service"
+  #   expect_exit_code: 0
+  #   interval: "1m"
+  #   timeout: "3s"
+  #   group: "monitoring"
+  #   severity: "critical"

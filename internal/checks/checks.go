@@ -47,6 +47,14 @@ func Run(ctx context.Context, cfg config.CheckConfig) Result {
 		res = checkMemory(ctx, cfg)
 	case "tls_cert":
 		res = checkTLSCert(ctx, cfg)
+	case "dns":
+		res = checkDNS(ctx, cfg)
+	case "process":
+		res = checkProcess(ctx, cfg)
+	case "file_age":
+		res = checkFileAge(cfg)
+	case "command":
+		res = checkCommand(ctx, cfg)
 	default:
 		res = Result{Status: StatusFail, Message: fmt.Sprintf("unsupported check type: %s", cfg.Type)}
 	}

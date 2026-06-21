@@ -22,10 +22,11 @@ type RelayConfig struct {
 }
 
 type WatcherConfig struct {
-	Interval         Duration `yaml:"interval"`
-	NotifyOnRecovery bool     `yaml:"notify_on_recovery"`
-	DedupWindow      Duration `yaml:"dedup_window"`
-	Hostname         string   `yaml:"hostname"`
+	Interval             Duration `yaml:"interval"`
+	NotifyOnRecovery     bool     `yaml:"notify_on_recovery"`
+	DedupWindow          Duration `yaml:"dedup_window"`
+	Hostname             string   `yaml:"hostname"`
+	CommandChecksEnabled bool     `yaml:"command_checks_enabled"`
 }
 
 type CheckConfig struct {
@@ -55,6 +56,23 @@ type CheckConfig struct {
 
 	// memory
 	MaxMemoryUsedPercent float64 `yaml:"max_used_percent,omitempty"`
+
+	// dns
+	Server           string `yaml:"server"`
+	QName            string `yaml:"qname"`
+	QType            string `yaml:"qtype"`
+	ExpectRCode      string `yaml:"expect_rcode"`
+	ExpectMinAnswers int    `yaml:"expect_min_answers"`
+
+	// process
+	Process string `yaml:"process"`
+
+	// file_age
+	MaxAge Duration `yaml:"max_age"`
+
+	// command
+	Command        string `yaml:"command"`
+	ExpectExitCode int    `yaml:"expect_exit_code"`
 
 	// tls_cert
 	WarnDays     int `yaml:"warn_days"`
@@ -106,6 +124,14 @@ func applyDefaults(cfg *Config) {
 		}
 		if cfg.Checks[i].Interval == 0 {
 			cfg.Checks[i].Interval = cfg.Watcher.Interval
+		}
+		if cfg.Checks[i].Type == "dns" {
+			if cfg.Checks[i].QType == "" {
+				cfg.Checks[i].QType = "A"
+			}
+			if cfg.Checks[i].ExpectRCode == "" {
+				cfg.Checks[i].ExpectRCode = "NOERROR"
+			}
 		}
 	}
 }
@@ -170,6 +196,34 @@ func validate(cfg *Config) error {
 			}
 			if ch.CriticalDays <= 0 {
 				return fmt.Errorf("check %q: critical_days must be > 0", ch.Name)
+			}
+		case "dns":
+			if ch.Server == "" {
+				return fmt.Errorf("check %q: server is required", ch.Name)
+			}
+			if _, _, err := net.SplitHostPort(ch.Server); err != nil {
+				return fmt.Errorf("check %q: invalid server %q: %w", ch.Name, ch.Server, err)
+			}
+			if ch.QName == "" {
+				return fmt.Errorf("check %q: qname is required", ch.Name)
+			}
+		case "process":
+			if ch.Process == "" {
+				return fmt.Errorf("check %q: process is required", ch.Name)
+			}
+		case "file_age":
+			if ch.Path == "" {
+				return fmt.Errorf("check %q: path is required", ch.Name)
+			}
+			if ch.MaxAge <= 0 {
+				return fmt.Errorf("check %q: max_age must be > 0", ch.Name)
+			}
+		case "command":
+			if !cfg.Watcher.CommandChecksEnabled {
+				return fmt.Errorf("check %q: command checks are disabled; set watcher.command_checks_enabled: true", ch.Name)
+			}
+			if ch.Command == "" {
+				return fmt.Errorf("check %q: command is required", ch.Name)
 			}
 		default:
 			return fmt.Errorf("check %q: unsupported type %q", ch.Name, ch.Type)
