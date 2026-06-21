@@ -75,7 +75,7 @@ watcher:
 
 server:
   enabled: true
-  listen: "127.0.0.1:34351"
+  listen: "127.0.0.1:8081"
 ```
 
 ## Observability endpoints
@@ -83,9 +83,9 @@ server:
 When `server.enabled: true`, tgn-watch exposes local HTTP endpoints:
 
 ```bash
-curl -s http://127.0.0.1:34351/healthz
-curl -s http://127.0.0.1:34351/status
-curl -s http://127.0.0.1:34351/metrics
+curl -s http://127.0.0.1:8081/healthz
+curl -s http://127.0.0.1:8081/status
+curl -s http://127.0.0.1:8081/metrics
 ```
 
 `/healthz` returns a minimal health response:
