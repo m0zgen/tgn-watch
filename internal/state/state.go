@@ -1,6 +1,7 @@
 package state
 
 import (
+	"sync"
 	"time"
 
 	"github.com/m0zgen/tgn-watch/internal/checks"
@@ -22,13 +23,18 @@ type Entry struct {
 }
 
 type Store struct {
+	mu    sync.RWMutex
 	items map[string]Entry
 }
 
 func New() *Store { return &Store{items: make(map[string]Entry)} }
 
 func (s *Store) Update(name string, res checks.Result, dedup time.Duration, notifyRecovery bool) Transition {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	now := time.Now()
+
 	entry, exists := s.items[name]
 	if !exists {
 		s.items[name] = Entry{LastStatus: res.Status, LastChange: now}
