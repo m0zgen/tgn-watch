@@ -1,16 +1,16 @@
 version: 2
 
-project_name: tgn-relay
+project_name: tgn-watch
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: tgn-relay
+  - id: tgn-watch
     # root: main: .
-    main: ./cmd/tgn-relay
-    binary: tgn-relay
+    main: ./cmd/tgn-watch
+    binary: tgn-watch
     env:
       - CGO_ENABLED=0
     goos:
@@ -52,7 +52,7 @@ changelog:
 release:
   github:
     owner: m0zgen
-    name: tgn-relay
+    name: tgn-watch
   draft: false
   prerelease: auto
   mode: replace
