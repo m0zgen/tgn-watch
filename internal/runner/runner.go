@@ -98,8 +98,15 @@ func (r *Runner) runCheck(parent context.Context, ch config.CheckConfig) {
 	res := checks.Run(ctx, ch)
 	cancel()
 
+	// if res.Status == checks.StatusFail && ch.ActionEnabled {
+	// 	res = r.tryAutoAction(parent, ch, res)
+	// }
 	if res.Status == checks.StatusFail && ch.ActionEnabled {
-		res = r.tryAutoAction(parent, ch, res)
+		if r.cfg.Watcher.ActionsEnabled {
+			res = r.tryAutoAction(parent, ch, res)
+		} else {
+			log.Printf("auto_action skipped: check=%q reason=global_actions_disabled", ch.Name)
+		}
 	}
 
 	tr := r.state.Update(ch.Name, res, r.cfg.Watcher.DedupWindow.Duration(), r.cfg.Watcher.NotifyOnRecovery)

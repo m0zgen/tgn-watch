@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -185,9 +187,9 @@ func validate(cfg *Config) error {
 
 		if ch.ActionEnabled {
 			if !cfg.Watcher.ActionsEnabled {
-				return fmt.Errorf("check %q: actions are disabled; set watcher.actions_enabled: true", ch.Name)
+				log.Printf("warn: check %q has action_enabled=true, but global watcher.actions_enabled=false; action will be skipped", ch.Name)
 			}
-			if ch.ActionCommand == "" {
+			if strings.TrimSpace(ch.ActionCommand) == "" {
 				return fmt.Errorf("check %q: action_command is required when action_enabled is true", ch.Name)
 			}
 		}
