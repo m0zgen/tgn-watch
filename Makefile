@@ -30,13 +30,13 @@ build:
 build-linux: build-linux-amd64 build-linux-arm64
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 		-ldflags "$(LDFLAGS)" \
 		-o $(BIN_DIR)/linux/amd64/$(APP) \
 		./cmd/$(APP)
 
 build-linux-arm64:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath \
 		-ldflags "$(LDFLAGS)" \
 		-o $(BIN_DIR)/linux/arm64/$(APP) \
 		./cmd/$(APP)
