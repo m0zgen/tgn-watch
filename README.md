@@ -5,6 +5,8 @@ It checks HTTP endpoints, TCP ports, systemd services, disk usage, memory usage,
 
 It is designed as a small alternative/complement to Monit or Uptime Kuma for simple production nodes and DNS PoPs.
 
+Working pipeline: `tgn-watch` -> `tgn-relay` -> Telegram.
+
 ## Features
 
 - HTTP checks
@@ -181,3 +183,9 @@ journalctl -u tgn-watch -f
 - Prometheus metrics
 - SIGHUP config reload
 - structured `/api/v1/event` support after `tgn-relay v0.2.0`
+
+## Credits
+
+- [tgn-relay](https://github.com/m0zgen/tgn-relay) lightweight service watcher + HTTP/TCP/DNS/systemd checks + tgn-relay notifications
+- Go standard library and open-source ecosystem for making this possible
+- [OpenBLD.net](https://openbld.net) team for inspiration and testing
