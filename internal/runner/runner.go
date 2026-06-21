@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/m0zgen/tgn-watch/internal/actions"
@@ -12,6 +13,8 @@ import (
 	"github.com/m0zgen/tgn-watch/internal/config"
 	"github.com/m0zgen/tgn-watch/internal/notifier"
 	"github.com/m0zgen/tgn-watch/internal/state"
+	"github.com/m0zgen/tgn-watch/internal/status"
+	"github.com/m0zgen/tgn-watch/internal/version"
 )
 
 type Runner struct {
@@ -21,6 +24,20 @@ type Runner struct {
 	lastRun    map[string]time.Time
 	lastAction map[string]time.Time
 	mu         sync.Mutex
+	startedAt  time.Time
+	lastRunAt  atomic.Int64
+	metrics    Metrics
+}
+
+type Metrics struct {
+	ChecksRunTotal          atomic.Uint64
+	ChecksOKTotal           atomic.Uint64
+	ChecksFailTotal         atomic.Uint64
+	ActionsAttemptTotal     atomic.Uint64
+	ActionsRecoveredTotal   atomic.Uint64
+	ActionsFailedTotal      atomic.Uint64
+	NotificationsTotal      atomic.Uint64
+	NotificationErrorsTotal atomic.Uint64
 }
 
 func New(cfg *config.Config) *Runner {
@@ -30,6 +47,7 @@ func New(cfg *config.Config) *Runner {
 		state:      state.New(),
 		lastRun:    make(map[string]time.Time),
 		lastAction: make(map[string]time.Time),
+		startedAt:  time.Now(),
 	}
 }
 
@@ -51,6 +69,7 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) runOnce(ctx context.Context) {
+	r.lastRunAt.Store(time.Now().Unix())
 	var wg sync.WaitGroup
 	for _, ch := range r.cfg.Checks {
 		ch := ch
@@ -98,9 +117,13 @@ func (r *Runner) runCheck(parent context.Context, ch config.CheckConfig) {
 	res := checks.Run(ctx, ch)
 	cancel()
 
-	// if res.Status == checks.StatusFail && ch.ActionEnabled {
-	// 	res = r.tryAutoAction(parent, ch, res)
-	// }
+	r.metrics.ChecksRunTotal.Add(1)
+	if res.Status == checks.StatusOK {
+		r.metrics.ChecksOKTotal.Add(1)
+	} else {
+		r.metrics.ChecksFailTotal.Add(1)
+	}
+
 	if res.Status == checks.StatusFail && ch.ActionEnabled {
 		if r.cfg.Watcher.ActionsEnabled {
 			res = r.tryAutoAction(parent, ch, res)
@@ -121,9 +144,11 @@ func (r *Runner) runCheck(parent context.Context, ch config.CheckConfig) {
 		return
 	}
 
+	r.metrics.NotificationsTotal.Add(1)
 	nctx, cancel := context.WithTimeout(parent, r.cfg.Relay.Timeout.Duration())
 	defer cancel()
 	if err := r.notifier.Notify(nctx, res, tr, r.cfg.Watcher.Hostname); err != nil {
+		r.metrics.NotificationErrorsTotal.Add(1)
 		log.Printf("notify failed: check=%q error=%v", res.Name, err)
 	}
 }
@@ -140,6 +165,7 @@ func (r *Runner) tryAutoAction(parent context.Context, ch config.CheckConfig, in
 	lastCheck := initial
 
 	for attempt := 1; attempt <= ch.ActionRetries; attempt++ {
+		r.metrics.ActionsAttemptTotal.Add(1)
 		actCtx, cancel := context.WithTimeout(parent, ch.ActionTimeout.Duration())
 		act := actions.Run(actCtx, ch.ActionCommand)
 		cancel()
@@ -148,6 +174,7 @@ func (r *Runner) tryAutoAction(parent context.Context, ch config.CheckConfig, in
 
 		if !sleepContext(parent, ch.ActionDelay.Duration()) {
 			lastCheck.Message = fmt.Sprintf("%s; auto action interrupted after attempt %d: %s", initial.Message, attempt, lastActionSummary)
+			r.metrics.ActionsFailedTotal.Add(1)
 			return lastCheck
 		}
 
@@ -159,12 +186,60 @@ func (r *Runner) tryAutoAction(parent context.Context, ch config.CheckConfig, in
 
 		if recheck.Status == checks.StatusOK {
 			recheck.Message = fmt.Sprintf("auto action recovered after attempt %d; %s; recheck: %s", attempt, lastActionSummary, recheck.Message)
+			r.metrics.ActionsRecoveredTotal.Add(1)
 			return recheck
 		}
 	}
 
+	r.metrics.ActionsFailedTotal.Add(1)
 	lastCheck.Message = fmt.Sprintf("%s; auto action failed after %d attempt(s); last action: %s; last recheck: %s", initial.Message, ch.ActionRetries, lastActionSummary, lastCheck.Message)
 	return lastCheck
+}
+
+func (r *Runner) Status() status.Runtime {
+	checksSnapshot := r.state.Snapshot()
+	checksOK := 0
+	checksFail := 0
+	for _, ch := range checksSnapshot {
+		if ch.Status == string(checks.StatusOK) {
+			checksOK++
+		} else if ch.Status == string(checks.StatusFail) {
+			checksFail++
+		}
+	}
+
+	lastRun := time.Unix(r.lastRunAt.Load(), 0)
+	if r.lastRunAt.Load() == 0 {
+		lastRun = time.Time{}
+	}
+	up := time.Since(r.startedAt).Round(time.Second)
+
+	return status.Runtime{
+		App:             "tgn-watch",
+		Version:         version.Version,
+		Commit:          version.Commit,
+		Date:            version.Date,
+		Host:            r.cfg.Watcher.Hostname,
+		StartedAt:       r.startedAt,
+		Uptime:          up.String(),
+		UptimeSeconds:   int64(up.Seconds()),
+		ChecksTotal:     len(r.cfg.Checks),
+		ChecksOK:        checksOK,
+		ChecksFail:      checksFail,
+		WatcherInterval: r.cfg.Watcher.Interval.String(),
+		LastRun:         lastRun,
+		Metrics: status.Metrics{
+			ChecksRunTotal:          r.metrics.ChecksRunTotal.Load(),
+			ChecksOKTotal:           r.metrics.ChecksOKTotal.Load(),
+			ChecksFailTotal:         r.metrics.ChecksFailTotal.Load(),
+			ActionsAttemptTotal:     r.metrics.ActionsAttemptTotal.Load(),
+			ActionsRecoveredTotal:   r.metrics.ActionsRecoveredTotal.Load(),
+			ActionsFailedTotal:      r.metrics.ActionsFailedTotal.Load(),
+			NotificationsTotal:      r.metrics.NotificationsTotal.Load(),
+			NotificationErrorsTotal: r.metrics.NotificationErrorsTotal.Load(),
+		},
+		Checks: checksSnapshot,
+	}
 }
 
 func sleepContext(ctx context.Context, d time.Duration) bool {

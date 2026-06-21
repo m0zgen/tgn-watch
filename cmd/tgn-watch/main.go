@@ -12,6 +12,7 @@ import (
 
 	"github.com/m0zgen/tgn-watch/internal/config"
 	"github.com/m0zgen/tgn-watch/internal/runner"
+	"github.com/m0zgen/tgn-watch/internal/server"
 	"github.com/m0zgen/tgn-watch/internal/version"
 )
 
@@ -34,6 +35,16 @@ func main() {
 	defer stop()
 
 	r := runner.New(cfg)
+	if cfg.Server.Enabled {
+		srv := server.New(cfg.Server, r)
+		go func() {
+			if err := srv.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("status server stopped with error: %v", err)
+				stop()
+			}
+		}()
+	}
+
 	if err := r.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("runner stopped with error: %v", err)
 	}

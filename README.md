@@ -2,7 +2,7 @@
 
 `tgn-watch` is a lightweight monitoring agent for Linux/server infrastructure. It runs local checks and sends Telegram alerts through `tgn-relay`.
 
-Current release: **v0.1.2**
+Current release: **v0.1.3**
 
 ## Features
 
@@ -21,6 +21,8 @@ Current release: **v0.1.2**
 - per-check interval
 - alert/recovery notifications
 - deduplication window
+- local observability HTTP server
+- `/healthz`, `/status`, `/metrics`
 - YAML-style config without external Go dependencies
 - systemd unit example
 
@@ -70,7 +72,44 @@ watcher:
   hostname: ""
   command_checks_enabled: false
   actions_enabled: false
+
+server:
+  enabled: true
+  listen: "127.0.0.1:34351"
 ```
+
+## Observability endpoints
+
+When `server.enabled: true`, tgn-watch exposes local HTTP endpoints:
+
+```bash
+curl -s http://127.0.0.1:34351/healthz
+curl -s http://127.0.0.1:34351/status
+curl -s http://127.0.0.1:34351/metrics
+```
+
+`/healthz` returns a minimal health response:
+
+```json
+{"status":"ok"}
+```
+
+`/status` returns runtime state, version, uptime, check status, last messages and counters.
+
+`/metrics` returns Prometheus-compatible text format without external dependencies.
+
+Example metrics:
+
+```text
+tgn_watch_up 1
+tgn_watch_uptime_seconds 3600
+tgn_watch_checks_total 8
+tgn_watch_checks_ok 7
+tgn_watch_checks_fail 1
+tgn_watch_check_status{group="monitoring",name="tgn-relay local health",severity="critical",type="http"} 1
+```
+
+## Per-check interval
 
 Each check may override the global interval:
 
@@ -219,10 +258,8 @@ watcher:
   command_checks_enabled: true
 ```
 
-Then define a command check:
-
 ```yaml
-- name: "Custom systemctl check"
+- name: "Custom command example"
   type: "command"
   command: "systemctl is-active tgn-relay.service"
   expect_exit_code: 0
@@ -232,96 +269,68 @@ Then define a command check:
   severity: "critical"
 ```
 
-Command checks execute through `/bin/sh -c`, so treat them as trusted local configuration only.
+## Auto-recovery actions
 
+Auto actions are disabled globally by default:
 
-### Auto-recovery actions
+```yaml
+watcher:
+  actions_enabled: false
+```
 
-Auto actions are disabled by default because they execute local commands through `/bin/sh -c`.
-Enable them globally first:
+Enable the global guard first:
 
 ```yaml
 watcher:
   actions_enabled: true
 ```
 
-Then enable an action on a specific check:
+Then enable action on specific checks only:
 
 ```yaml
-- name: "tgn-relay systemd"
-  type: "systemd"
-  service: "tgn-relay.service"
-  timeout: "3s"
+- name: "tgn-relay TCP"
+  type: "tcp"
+  target: "127.0.0.1:8080"
+  timeout: "2s"
+  interval: "30s"
   group: "monitoring"
   severity: "critical"
+
   action_enabled: true
-  action_command: "systemctl restart tgn-relay.service"
+  action_command: "sudo /usr/local/sbin/tgn-watch-restart-tgn-relay"
   action_retries: 2
   action_timeout: "10s"
   action_delay: "2s"
   action_cooldown: "5m"
 ```
 
-Action behavior:
+If `watcher.actions_enabled: false`, checks still run and notifications still work, but action commands are skipped.
 
-```text
-check FAIL -> run action -> wait action_delay -> re-check
-re-check OK   -> keep final check status OK and log auto recovery
-re-check FAIL -> retry until action_retries is exhausted
-still FAIL    -> normal alert/repeat notification path
+## systemd
+
+Example unit:
+
+```ini
+[Unit]
+Description=tgn-watch lightweight monitoring agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tgn-watch
+Group=tgn-watch
+ExecStart=/usr/local/bin/tgn-watch -config /etc/tgn-watch/config.yml
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-`action_cooldown` prevents restart loops. While cooldown is active, tgn-watch skips the action and handles the failed check normally.
+## Notes
 
-## Notification logic
-
-```text
-UNKNOWN -> FAIL     alert
-OK      -> FAIL     alert
-FAIL    -> FAIL     repeat only after dedup_window
-FAIL    -> OK       recovery, if notify_on_recovery is true
-OK      -> OK       no notification
-```
-
-## Install with systemd
-
-```bash
-sudo useradd --system --home /var/lib/tgn-watch --shell /usr/sbin/nologin tgn-watch || true
-sudo mkdir -p /etc/tgn-watch /var/lib/tgn-watch
-sudo cp bin/tgn-watch /usr/local/bin/tgn-watch
-sudo cp configs/config.example.yml /etc/tgn-watch/config.yml
-sudo cp deploy/systemd/tgn-watch.service /etc/systemd/system/tgn-watch.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now tgn-watch
-```
-
-Logs:
-
-```bash
-journalctl -u tgn-watch -f
-```
-
-## Changelog
-
-### v0.1.2
-
-- feat: auto-recovery actions for failed checks
-- feat: global `watcher.actions_enabled` safety flag
-- feat: per-check action command/retries/timeout/delay/cooldown
-- build: version bump to 0.1.2
-
-### v0.1.1
-
-- fix: protect state map with mutex
-- build: add `-trimpath`
-- feat: DNS check
-- feat: process check
-- feat: file age check
-- feat: command check with explicit enable flag
-- feat: per-check interval
-
-### v0.1.0
-
-- initial MVP
-- HTTP/TCP/systemd/disk/memory/TLS certificate checks
-- alert/recovery notifications through tgn-relay
+- Keep the observability server bound to `127.0.0.1` unless you intentionally expose it.
+- Do not enable command checks globally unless you trust the config source.
+- Do not enable auto actions globally unless sudoers/wrapper scripts are restricted.
+- Prefer root-owned wrapper scripts for restart actions instead of broad sudo permissions.

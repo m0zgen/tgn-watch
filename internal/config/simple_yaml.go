@@ -53,6 +53,10 @@ func parseSimpleYAML(b []byte) (*Config, error) {
 			if err := setRelayField(&cfg.Relay, key, val); err != nil {
 				return nil, fmt.Errorf("line %d: %w", idx+1, err)
 			}
+		case "server":
+			if err := setServerField(&cfg.Server, key, val); err != nil {
+				return nil, fmt.Errorf("line %d: %w", idx+1, err)
+			}
 		case "watcher":
 			if err := setWatcherField(&cfg.Watcher, key, val); err != nil {
 				return nil, fmt.Errorf("line %d: %w", idx+1, err)
@@ -154,6 +158,22 @@ func setRelayField(r *RelayConfig, key, val string) error {
 		r.Timeout = d
 	default:
 		return fmt.Errorf("unknown relay field %q", key)
+	}
+	return nil
+}
+
+func setServerField(s *ServerConfig, key, val string) error {
+	switch key {
+	case "enabled":
+		b, err := parseBoolValue(val)
+		if err != nil {
+			return err
+		}
+		s.Enabled = b
+	case "listen":
+		s.Listen = val
+	default:
+		return fmt.Errorf("unknown server field %q", key)
 	}
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Relay   RelayConfig   `yaml:"relay"`
 	Watcher WatcherConfig `yaml:"watcher"`
+	Server  ServerConfig  `yaml:"server"`
 	Checks  []CheckConfig `yaml:"checks"`
 }
 
@@ -21,6 +22,11 @@ type RelayConfig struct {
 	Key          string   `yaml:"key"`
 	DefaultGroup string   `yaml:"default_group"`
 	Timeout      Duration `yaml:"timeout"`
+}
+
+type ServerConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Listen  string `yaml:"listen"`
 }
 
 type WatcherConfig struct {
@@ -117,6 +123,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Watcher.DedupWindow == 0 {
 		cfg.Watcher.DedupWindow = Duration(10 * time.Minute)
+	}
+	if cfg.Server.Listen == "" {
+		cfg.Server.Listen = "127.0.0.1:34351"
 	}
 	if cfg.Watcher.Hostname == "" {
 		if hn, err := os.Hostname(); err == nil {

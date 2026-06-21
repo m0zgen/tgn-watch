@@ -14,6 +14,11 @@ watcher:
   # Auto actions also execute via /bin/sh -c and are disabled by default for safety.
   actions_enabled: false
 
+server:
+  # Local observability endpoints: /healthz, /status, /metrics
+  enabled: true
+  listen: "127.0.0.1:34351"
+
 checks:
   - name: "tgn-relay local health"
     type: "http"
