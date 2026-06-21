@@ -27,6 +27,7 @@ type WatcherConfig struct {
 	DedupWindow          Duration `yaml:"dedup_window"`
 	Hostname             string   `yaml:"hostname"`
 	CommandChecksEnabled bool     `yaml:"command_checks_enabled"`
+	ActionsEnabled       bool     `yaml:"actions_enabled"`
 }
 
 type CheckConfig struct {
@@ -73,6 +74,14 @@ type CheckConfig struct {
 	// command
 	Command        string `yaml:"command"`
 	ExpectExitCode int    `yaml:"expect_exit_code"`
+
+	// action / auto-recovery
+	ActionEnabled  bool     `yaml:"action_enabled"`
+	ActionCommand  string   `yaml:"action_command"`
+	ActionRetries  int      `yaml:"action_retries"`
+	ActionTimeout  Duration `yaml:"action_timeout"`
+	ActionDelay    Duration `yaml:"action_delay"`
+	ActionCooldown Duration `yaml:"action_cooldown"`
 
 	// tls_cert
 	WarnDays     int `yaml:"warn_days"`
@@ -125,6 +134,20 @@ func applyDefaults(cfg *Config) {
 		if cfg.Checks[i].Interval == 0 {
 			cfg.Checks[i].Interval = cfg.Watcher.Interval
 		}
+		if cfg.Checks[i].ActionEnabled {
+			if cfg.Checks[i].ActionRetries <= 0 {
+				cfg.Checks[i].ActionRetries = 1
+			}
+			if cfg.Checks[i].ActionTimeout == 0 {
+				cfg.Checks[i].ActionTimeout = Duration(10 * time.Second)
+			}
+			if cfg.Checks[i].ActionDelay == 0 {
+				cfg.Checks[i].ActionDelay = Duration(2 * time.Second)
+			}
+			if cfg.Checks[i].ActionCooldown == 0 {
+				cfg.Checks[i].ActionCooldown = Duration(5 * time.Minute)
+			}
+		}
 		if cfg.Checks[i].Type == "dns" {
 			if cfg.Checks[i].QType == "" {
 				cfg.Checks[i].QType = "A"
@@ -159,6 +182,15 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("duplicate check name: %s", ch.Name)
 		}
 		seen[ch.Name] = struct{}{}
+
+		if ch.ActionEnabled {
+			if !cfg.Watcher.ActionsEnabled {
+				return fmt.Errorf("check %q: actions are disabled; set watcher.actions_enabled: true", ch.Name)
+			}
+			if ch.ActionCommand == "" {
+				return fmt.Errorf("check %q: action_command is required when action_enabled is true", ch.Name)
+			}
+		}
 
 		switch ch.Type {
 		case "http":

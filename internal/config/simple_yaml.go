@@ -186,6 +186,12 @@ func setWatcherField(w *WatcherConfig, key, val string) error {
 			return err
 		}
 		w.CommandChecksEnabled = b
+	case "actions_enabled":
+		b, err := parseBoolValue(val)
+		if err != nil {
+			return err
+		}
+		w.ActionsEnabled = b
 	default:
 		return fmt.Errorf("unknown watcher field %q", key)
 	}
@@ -291,6 +297,38 @@ func setCheckField(c *CheckConfig, key, val string) error {
 			return err
 		}
 		c.ExpectExitCode = i
+	case "action_enabled":
+		b, err := parseBoolValue(val)
+		if err != nil {
+			return err
+		}
+		c.ActionEnabled = b
+	case "action_command":
+		c.ActionCommand = val
+	case "action_retries":
+		i, err := parseIntValue(val)
+		if err != nil {
+			return err
+		}
+		c.ActionRetries = i
+	case "action_timeout":
+		d, err := parseDurationValue(val)
+		if err != nil {
+			return err
+		}
+		c.ActionTimeout = d
+	case "action_delay":
+		d, err := parseDurationValue(val)
+		if err != nil {
+			return err
+		}
+		c.ActionDelay = d
+	case "action_cooldown":
+		d, err := parseDurationValue(val)
+		if err != nil {
+			return err
+		}
+		c.ActionCooldown = d
 	default:
 		return fmt.Errorf("unknown check field %q", key)
 	}

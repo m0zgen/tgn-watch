@@ -47,7 +47,7 @@ func (r *Relay) Notify(ctx context.Context, res checks.Result, tr state.Transiti
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Relay-Key", r.key)
-	req.Header.Set("User-Agent", "tgn-watch/0.1.0")
+	req.Header.Set("User-Agent", "tgn-watch/0.1.2")
 
 	resp, err := r.client.Do(req)
 	if err != nil {

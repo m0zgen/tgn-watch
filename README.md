@@ -2,7 +2,7 @@
 
 `tgn-watch` is a lightweight monitoring agent for Linux/server infrastructure. It runs local checks and sends Telegram alerts through `tgn-relay`.
 
-Current release: **v0.1.1**
+Current release: **v0.1.2**
 
 ## Features
 
@@ -16,6 +16,8 @@ Current release: **v0.1.1**
 - TLS certificate expiry checks
 - file age checks
 - command checks with explicit enable flag
+- auto-recovery actions with explicit enable flag
+- action retries, timeout, delay and cooldown
 - per-check interval
 - alert/recovery notifications
 - deduplication window
@@ -67,6 +69,7 @@ watcher:
   dedup_window: "10m"
   hostname: ""
   command_checks_enabled: false
+  actions_enabled: false
 ```
 
 Each check may override the global interval:
@@ -231,6 +234,45 @@ Then define a command check:
 
 Command checks execute through `/bin/sh -c`, so treat them as trusted local configuration only.
 
+
+### Auto-recovery actions
+
+Auto actions are disabled by default because they execute local commands through `/bin/sh -c`.
+Enable them globally first:
+
+```yaml
+watcher:
+  actions_enabled: true
+```
+
+Then enable an action on a specific check:
+
+```yaml
+- name: "tgn-relay systemd"
+  type: "systemd"
+  service: "tgn-relay.service"
+  timeout: "3s"
+  group: "monitoring"
+  severity: "critical"
+  action_enabled: true
+  action_command: "systemctl restart tgn-relay.service"
+  action_retries: 2
+  action_timeout: "10s"
+  action_delay: "2s"
+  action_cooldown: "5m"
+```
+
+Action behavior:
+
+```text
+check FAIL -> run action -> wait action_delay -> re-check
+re-check OK   -> keep final check status OK and log auto recovery
+re-check FAIL -> retry until action_retries is exhausted
+still FAIL    -> normal alert/repeat notification path
+```
+
+`action_cooldown` prevents restart loops. While cooldown is active, tgn-watch skips the action and handles the failed check normally.
+
 ## Notification logic
 
 ```text
@@ -260,6 +302,13 @@ journalctl -u tgn-watch -f
 ```
 
 ## Changelog
+
+### v0.1.2
+
+- feat: auto-recovery actions for failed checks
+- feat: global `watcher.actions_enabled` safety flag
+- feat: per-check action command/retries/timeout/delay/cooldown
+- build: version bump to 0.1.2
 
 ### v0.1.1
 

@@ -11,6 +11,8 @@ watcher:
   hostname: ""
   # Command checks execute via /bin/sh -c and are disabled by default for safety.
   command_checks_enabled: false
+  # Auto actions also execute via /bin/sh -c and are disabled by default for safety.
+  actions_enabled: false
 
 checks:
   - name: "tgn-relay local health"
@@ -44,6 +46,13 @@ checks:
     timeout: "3s"
     group: "monitoring"
     severity: "critical"
+    # Enable watcher.actions_enabled before using auto actions.
+    # action_enabled: true
+    # action_command: "systemctl restart tgn-relay.service"
+    # action_retries: 2
+    # action_timeout: "10s"
+    # action_delay: "2s"
+    # action_cooldown: "5m"
 
   - name: "tgn-relay process"
     type: "process"
@@ -95,3 +104,20 @@ checks:
   #   timeout: "3s"
   #   group: "monitoring"
   #   severity: "critical"
+
+
+  # Auto action example for TCP port recovery.
+  # Enable watcher.actions_enabled before using it.
+  # - name: "Local service TCP with restart"
+  #   type: "tcp"
+  #   target: "127.0.0.1:8080"
+  #   timeout: "2s"
+  #   interval: "30s"
+  #   group: "monitoring"
+  #   severity: "critical"
+  #   action_enabled: true
+  #   action_command: "systemctl restart tgn-relay.service"
+  #   action_retries: 2
+  #   action_timeout: "10s"
+  #   action_delay: "2s"
+  #   action_cooldown: "5m"
